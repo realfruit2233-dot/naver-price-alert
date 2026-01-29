@@ -23,8 +23,8 @@ jobs:
           pip install playwright requests
           playwright install chromium
 
-      - name: Run price checker
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: python price_check.py
+      - - name: Run price check
+  env:
+    TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+  run: python price_check.py
