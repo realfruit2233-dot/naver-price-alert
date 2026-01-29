@@ -1,41 +1,32 @@
-import requests
+from playwright.sync_api import sync_playwright
 import os
 
-CATALOG_ID = "53549966161"
-API_URL = f"https://search.shopping.naver.com/api/products/{CATALOG_ID}"
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Referer": "https://search.shopping.naver.com/",
-    "Accept": "application/json"
-}
+URL = "https://search.shopping.naver.com/catalog/53549966161"
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
 def send(msg):
+    import requests
     requests.get(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
         params={"chat_id": CHAT_ID, "text": msg}
     )
 
-res = requests.get(API_URL, headers=HEADERS, timeout=10)
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    )
+    page.goto(URL, timeout=60000)
+    page.wait_for_timeout(5000)
 
-# 👉 여기서 차단 여부 먼저 체크
-if res.status_code != 200:
-    send(f"❌ 네이버 API 접근 실패 (status {res.status_code})")
-    exit()
+    # 👉 화면에 보이는 '최저가' 텍스트
+    price_text = page.locator("strong.price_real").first.inner_text()
+    browser.close()
 
-try:
-    data = res.json()
-except Exception:
-    send("❌ JSON 파싱 실패 (네이버 차단/구조 변경)")
-    exit()
+price = int(price_text.replace(",", "").replace("원", ""))
 
-# 👉 실제 최저가 위치
-price = data["price"]["lowestPrice"]
-
-# 이전 가격 비교
 if os.path.exists("last_price.txt"):
     last = int(open("last_price.txt").read())
 else:
