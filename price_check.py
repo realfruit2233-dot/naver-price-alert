@@ -13,19 +13,24 @@ CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 def send_telegram(message: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": message}, timeout=10)
+    requests.post(
+        url,
+        data={"chat_id": CHAT_ID, "text": message},
+        timeout=10
+    )
 
 
-def extract_lowest_price(text: str) -> int:
+def extract_delivery_lowest_price(text: str) -> int:
     """
-    페이지 전체 텍스트에서 '원' 단위 숫자 중 최저가 추출
+    '배송비포함 최저 65,900원' 패턴만 정확히 추출
     """
-    prices = re.findall(r"(\d{1,3}(?:,\d{3})+)\s*원", text)
-    if not prices:
-        raise ValueError("페이지에서 가격 패턴을 찾지 못함")
+    pattern = r"배송비\s*포함\s*최저\s*([\d,]+)\s*원"
+    match = re.search(pattern, text)
 
-    nums = [int(p.replace(",", "")) for p in prices]
-    return min(nums)
+    if not match:
+        raise ValueError("‘배송비포함 최저가’ 문구를 찾지 못함")
+
+    return int(match.group(1).replace(",", ""))
 
 
 def get_current_price() -> int:
@@ -41,11 +46,11 @@ def get_current_price() -> int:
 
         page.goto(URL, wait_until="networkidle", timeout=30000)
 
-        # 🔥 페이지 전체 텍스트 수집
+        # 페이지 전체 텍스트에서 정확한 문구만 타겟
         body_text = page.locator("body").inner_text(timeout=30000)
 
         browser.close()
-        return extract_lowest_price(body_text)
+        return extract_delivery_lowest_price(body_text)
 
 
 def read_last_price():
@@ -64,19 +69,19 @@ def main():
     try:
         current_price = get_current_price()
     except Exception as e:
-        send_telegram(f"❌ 가격 추출 실패\n에러: {e}")
+        send_telegram(f"❌ 배송비포함 최저가 추출 실패\n에러: {e}")
         raise
 
     last_price = read_last_price()
 
     if last_price is None:
         save_price(current_price)
-        send_telegram(f"📌 최초 가격 저장: {current_price:,}원")
+        send_telegram(f"📌 배송비포함 최저가 최초 저장: {current_price:,}원")
         return
 
     if current_price != last_price:
         send_telegram(
-            "📉 네이버 쇼핑 최저가 변동!\n\n"
+            "📉 배송비포함 최저가 변동!\n\n"
             f"이전 가격: {last_price:,}원\n"
             f"현재 가격: {current_price:,}원\n\n"
             f"{URL}"
