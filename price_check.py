@@ -1,9 +1,13 @@
 import requests
-import re
 import os
 
-URL = "https://search.shopping.naver.com/catalog/53549966161"
-HEADERS = {"User-Agent": "Mozilla/5.0"}
+CATALOG_ID = "53549966161"
+API_URL = f"https://search.shopping.naver.com/api/catalogs/{CATALOG_ID}"
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Referer": "https://search.shopping.naver.com/"
+}
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
@@ -14,30 +18,23 @@ def send(msg):
         params={"chat_id": CHAT_ID, "text": msg}
     )
 
-html = requests.get(URL, headers=HEADERS).text
+res = requests.get(API_URL, headers=HEADERS)
+data = res.json()
 
-patterns = [
-    r'"lowPrice":\s*(\d+)',
-    r'"lowestPrice":\s*(\d+)',
-    r'"price":\s*(\d+)'
-]
-
-price = None
-for p in patterns:
-    m = re.search(p, html)
-    if m:
-        price = int(m.group(1))
-        break
-
-if price is None:
-    send("❌ 가격 파싱 실패 (네이버 구조 변경 가능)")
-    exit()
+# 최저가 추출 (네이버 공식 필드)
+price = data["price"]["lowPrice"]
 
 if os.path.exists("last_price.txt"):
     last = int(open("last_price.txt").read())
 else:
-    last = price
+    send(f"📌 가격 추적 시작\n현재 최저가: {price:,}원")
+    open("last_price.txt", "w").write(str(price))
+    exit()
 
 if price != last:
-    send(f"📉 네이버 쇼핑 최저가 변동!\n이전: {last:,}원\n현재: {price:,}원")
-    open("last_price.txt","w").write(str(price))
+    send(
+        f"📉 네이버 쇼핑 최저가 변동!\n"
+        f"이전: {last:,}원\n"
+        f"현재: {price:,}원"
+    )
+    open("last_price.txt", "w").write(str(price))
