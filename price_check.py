@@ -13,24 +13,26 @@ CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 def send_telegram(message: str):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(
-        url,
-        data={"chat_id": CHAT_ID, "text": message},
-        timeout=10
-    )
+    requests.post(url, data={"chat_id": CHAT_ID, "text": message}, timeout=10)
 
 
 def extract_delivery_lowest_price(text: str) -> int:
     """
-    '배송비포함 최저 65,900원' 패턴만 정확히 추출
+    네이버 쇼핑 '배송비포함 최저가' 모든 변형 패턴 대응
     """
-    pattern = r"배송비\s*포함\s*최저\s*([\d,]+)\s*원"
-    match = re.search(pattern, text)
+    patterns = [
+        r"배송비\s*포함\s*최저\s*([\d,]+)\s*원",
+        r"배송비\s*포함[\s\S]{0,20}?([\d,]+)\s*원",
+        r"최저\s*([\d,]+)\s*원[\s\S]{0,20}?배송비\s*포함",
+        r"최저가\s*([\d,]+)\s*원",
+    ]
 
-    if not match:
-        raise ValueError("‘배송비포함 최저가’ 문구를 찾지 못함")
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return int(match.group(1).replace(",", ""))
 
-    return int(match.group(1).replace(",", ""))
+    raise ValueError("배송비포함 최저가 패턴 매칭 실패")
 
 
 def get_current_price() -> int:
@@ -46,7 +48,7 @@ def get_current_price() -> int:
 
         page.goto(URL, wait_until="networkidle", timeout=30000)
 
-        # 페이지 전체 텍스트에서 정확한 문구만 타겟
+        # 페이지 전체 텍스트 확보 (React 렌더링 대응)
         body_text = page.locator("body").inner_text(timeout=30000)
 
         browser.close()
