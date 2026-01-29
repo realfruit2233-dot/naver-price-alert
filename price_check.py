@@ -21,7 +21,6 @@ def send_telegram(message: str):
 
 
 def extract_price(text: str) -> int:
-    """문자열에서 숫자만 추출"""
     nums = re.findall(r"\d+", text.replace(",", ""))
     if not nums:
         raise ValueError("가격 숫자 추출 실패")
@@ -41,14 +40,16 @@ def get_current_price() -> int:
 
         page.goto(URL, wait_until="networkidle", timeout=30000)
 
-        # 여러 가격 selector 동시 대응
-        locator = page.locator(
-            "span.price_num, em.price_num, strong.price_real, span.lowest_price"
+        # ✅ 네이버 쇼핑은 가격이 iframe 안에 있음
+        frame = page.frame_locator("iframe#searchIframe")
+
+        locator = frame.locator(
+            "span.price_num, em.price_num, strong.price_real"
         ).first
 
-        price_text = locator.inner_text(timeout=15000)
-        browser.close()
+        price_text = locator.inner_text(timeout=20000)
 
+        browser.close()
         return extract_price(price_text)
 
 
