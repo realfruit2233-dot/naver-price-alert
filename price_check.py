@@ -1,43 +1,44 @@
 from playwright.sync_api import sync_playwright
+import requests
 import os
+import re
 
+# ====== 설정 ======
 URL = "https://search.shopping.naver.com/catalog/53549966161"
+BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
+PRICE_FILE = "last_price.txt"
 
-def send(msg):
-    import requests
-    requests.get(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-        params={"chat_id": CHAT_ID, "text": msg}
-    )
+
+def send_telegram(msg):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, data={
+        "chat_id": CHAT_ID,
+        "text": msg
+    })
+
 
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
-    page = browser.new_page(
-        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    )
-    page.goto(URL, timeout=60000)
-    page.wait_for_timeout(5000)
+    page = browser.new_page()
 
-    # 👉 화면에 보이는 '최저가' 텍스트
-    price_text = page.locator("strong.price_real").first.inner_text()
+    page.goto(URL, timeout=60000)
+    page.wait_for_timeout(5000)  # 렌더링 대기
+
+    text = page.inner_text("body")
+
     browser.close()
 
-price = int(price_text.replace(",", "").replace("원", ""))
+# ====== 가격 추출 (숫자 + 원) ======
+prices = re.findall(r"(\d{1,3}(?:,\d{3})+)원", text)
 
-if os.path.exists("last_price.txt"):
-    last = int(open("last_price.txt").read())
-else:
-    send(f"📌 가격 추적 시작\n현재 최저가: {price:,}원")
-    open("last_price.txt", "w").write(str(price))
-    exit()
+if not prices:
+    send_telegram("❌ 가격을 찾지 못했습니다")
+    raise Exception("Price not found")
 
-if price != last:
-    send(
-        f"📉 네이버 쇼핑 최저가 변동!\n"
-        f"이전: {last:,}원\n"
-        f"현재: {price:,}원"
-    )
-    open("last_price.txt", "w").write(str(price))
+# 가장 낮은 가격 선택
+current_price = min(int(p.replace(",", "")) for p in prices)
+
+# ====== 이전 가격과 비교 ======
+if os.path.exists(PRICE_F_
