@@ -2,11 +2,12 @@ import requests
 import os
 
 CATALOG_ID = "53549966161"
-API_URL = f"https://search.shopping.naver.com/api/catalogs/{CATALOG_ID}"
+API_URL = f"https://search.shopping.naver.com/api/products/{CATALOG_ID}"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Referer": "https://search.shopping.naver.com/"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Referer": "https://search.shopping.naver.com/",
+    "Accept": "application/json"
 }
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
@@ -18,12 +19,23 @@ def send(msg):
         params={"chat_id": CHAT_ID, "text": msg}
     )
 
-res = requests.get(API_URL, headers=HEADERS)
-data = res.json()
+res = requests.get(API_URL, headers=HEADERS, timeout=10)
 
-# 최저가 추출 (네이버 공식 필드)
-price = data["price"]["lowPrice"]
+# 👉 여기서 차단 여부 먼저 체크
+if res.status_code != 200:
+    send(f"❌ 네이버 API 접근 실패 (status {res.status_code})")
+    exit()
 
+try:
+    data = res.json()
+except Exception:
+    send("❌ JSON 파싱 실패 (네이버 차단/구조 변경)")
+    exit()
+
+# 👉 실제 최저가 위치
+price = data["price"]["lowestPrice"]
+
+# 이전 가격 비교
 if os.path.exists("last_price.txt"):
     last = int(open("last_price.txt").read())
 else:
