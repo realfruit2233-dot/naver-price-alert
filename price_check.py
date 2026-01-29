@@ -3,74 +3,64 @@ import hashlib
 import requests
 from playwright.sync_api import sync_playwright
 
-URL = "https://search.shopping.naver.com/catalog/53549966161?deliveryCharge=true"
-STATE_FILE = "last_state.txt"
+# ===== 설정 =====
+URL = "https://search.shopping.naver.com/catalog/53549966161"
+STATE_FILE = "page_state.txt"
 
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
+# ===== 텔레그램 전송 =====
+def send_telegram(message: str):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
+    requests.post(url, json=payload, timeout=10)
 
-def send_telegram(msg):
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-        data={"chat_id": CHAT_ID, "text": msg},
-        timeout=10
-    )
-
-
-def get_page_state() -> str:
-    """
-    최저가 영역 DOM 전체를 문자열로 가져와
-    해시값으로 변환
-    """
+# ===== 페이지 핵심 내용 해시 =====
+def get_page_hash():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        page.goto(URL, wait_until="networkidle", timeout=30000)
 
-        # 네이버 쇼핑 가격 영역 전체
-        body_html = page.locator("body").inner_html()
+        page.goto(URL, timeout=60000)
+        page.wait_for_timeout(5000)  # JS 렌더링 대기
+
+        # 네이버 쇼핑은 body 전체 텍스트가 제일 안정적
+        body_text = page.locator("body").inner_text()
 
         browser.close()
 
-    return hashlib.sha256(body_html.encode("utf-8")).hexdigest()
+    # 공백 정리 후 해시
+    normalized = " ".join(body_text.split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
-
-def read_last_state():
-    if not os.path.exists(STATE_FILE):
-        return None
-    return open(STATE_FILE).read().strip()
-
-
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        f.write(state)
-
-
+# ===== 메인 로직 =====
 def main():
-    try:
-        current_state = get_page_state()
-    except Exception as e:
-        send_telegram(f"❌ 페이지 상태 확인 실패\n에러: {e}")
-        raise
+    current_hash = get_page_hash()
 
-    last_state = read_last_state()
-
-    if last_state is None:
-        save_state(current_state)
-        send_telegram("📌 최초 상태 저장 완료 (이후 변동 시 알림)")
+    # 최초 실행 → 상태만 저장 (알림 ❌)
+    if not os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "w") as f:
+            f.write(current_hash)
         return
 
-    if current_state != last_state:
+    with open(STATE_FILE, "r") as f:
+        last_hash = f.read().strip()
+
+    # 변동 감지
+    if current_hash != last_hash:
         send_telegram(
-            "📉 가격 또는 상품 상태 변동 감지!\n\n"
-            "배송비포함 최저가 영역에 변화가 있습니다.\n\n"
+            "🔔 네이버 쇼핑 페이지에 변동이 감지되었습니다!\n"
+            "👉 최저가 / 구성 / 판매처 변경 가능성 있음\n\n"
             f"{URL}"
         )
-        save_state(current_state)
-    else:
-        print("변동 없음")
 
+        # 상태 업데이트
+        with open(STATE_FILE, "w") as f:
+            f.write(current_hash)
 
 if __name__ == "__main__":
     main()
